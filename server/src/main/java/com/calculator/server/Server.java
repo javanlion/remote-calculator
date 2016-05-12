@@ -1,10 +1,14 @@
 package com.calculator.server;
 
 import com.calculator.common.util.ConnectionConstants;
+import com.calculator.common.util.LogUtils;
 import com.calculator.server.exec.Calculator;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -14,9 +18,8 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
-import static com.calculator.common.util.LogUtils.log;
-
 public class Server implements Runnable {
+    private static final Logger log = LogManager.getLogger(Server.class);
 
     private static final String DEFAULT_HOST = "localhost";
     private static final int DEFAULT_PORT = 50000;
@@ -46,7 +49,7 @@ public class Server implements Runnable {
 
     @Override
     public void run() {
-        log("Now accepting connections...");
+        log.info("Ready to accept connections...");
         try {
             //run the server as long as the thread is not interrupted.
             while (!Thread.currentThread().isInterrupted()) {
@@ -62,13 +65,13 @@ public class Server implements Runnable {
                     }
 
                     if (key.isAcceptable()) {
-                        log("Accepting connection");
+                        log.debug("Accepting connection");
                         accept(key);
                     } else if (key.isWritable()) {
-                        log("Writing...");
+                        log.debug("Writing...");
                         write(key);
                     } else if (key.isReadable()) {
-                        log("Reading connection");
+                        log.debug("Reading connection");
                         read(key);
                     }
                 }
@@ -82,7 +85,8 @@ public class Server implements Runnable {
     }
 
     private void init() {
-        log("initializing server");
+        log.info("Server initializing...");
+        log.info(LogUtils.getLogo());
         if (selector != null) return;
         if (serverChannel != null) return;
 
@@ -92,7 +96,7 @@ public class Server implements Runnable {
             serverChannel.configureBlocking(false);
             serverChannel.socket().bind(new InetSocketAddress(host, port));
             serverChannel.register(selector, SelectionKey.OP_ACCEPT);
-
+            log.info("Server initialized: [{}]", serverChannel.getLocalAddress());
         } catch (IOException e) {
             throw new RuntimeException("Cannot initialize server...", e);
         }
@@ -102,8 +106,8 @@ public class Server implements Runnable {
         ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
         SocketChannel socketChannel = serverSocketChannel.accept();
         socketChannel.configureBlocking(false);
-
         socketChannel.register(selector, SelectionKey.OP_WRITE);
+        log.info("New client accepted: [{}]", socketChannel.getRemoteAddress());
     }
 
     private void write(SelectionKey key) throws IOException {
@@ -112,14 +116,16 @@ public class Server implements Runnable {
 
         if (data == null) {
             key.interestOps(SelectionKey.OP_READ);
-            return;
         } else if (ConnectionConstants.CLOSED.equals(new String(data))) {
+            SocketAddress remoteAddress = channel.getRemoteAddress();
             channel.write(ByteBuffer.wrap(ConnectionConstants.CLOSED.getBytes()));
-            log("send: " + ConnectionConstants.CLOSED);
+            log.info("Remote host: [{}]. Send: [{}]", remoteAddress, ConnectionConstants.CLOSED);
+            log.debug("Closing connection with host [{}]", remoteAddress);
             channel.close();
+            log.info("Connection with [{}] closed", remoteAddress);
         } else {
             channel.write(ByteBuffer.wrap(data));
-            log("send: " + new String(data));
+            log.info("Remote host: [{}]. Send: [{}]", channel.getRemoteAddress(), new String(data));
             key.interestOps(SelectionKey.OP_READ);
         }
     }
@@ -132,15 +138,19 @@ public class Server implements Runnable {
         try {
             read = channel.read(readBuffer);
         } catch (IOException e) {
-            log("Reading problem, closing connection");
+            SocketAddress remoteAddress = channel.getRemoteAddress();
+            log.info("Reading problem, closing connection with [{}]", remoteAddress);
             key.cancel();
             channel.close();
+            log.info("Connection with [{}] closed", remoteAddress);
             return;
         }
         if (read == -1) {
-            log("Nothing was there to be read, closing connection");
-            channel.close();
+            SocketAddress remoteAddress = channel.getRemoteAddress();
+            log.info("Exit message received, closing connection with [{}]", remoteAddress);
             key.cancel();
+            channel.close();
+            log.info("Connection with [{}] closed", remoteAddress);
             return;
         }
 
@@ -148,7 +158,7 @@ public class Server implements Runnable {
         byte[] data = new byte[1000];
         readBuffer.get(data, 0, read);
         String receivedString = new String(data).trim();
-        log("Received: " + receivedString);
+        log.info("Remote host: [{}]. Received: [{}]", channel.getRemoteAddress(), receivedString);
 
         if (ConnectionConstants.OK_CLOSE.equals(receivedString)) {
             data = ConnectionConstants.CLOSED.getBytes();
@@ -165,7 +175,7 @@ public class Server implements Runnable {
     }
 
     private void closeConnection() {
-        log("Closing server down");
+        log.info("Closing server down");
         if (selector != null) {
             try {
                 selector.close();

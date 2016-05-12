@@ -1,6 +1,9 @@
 package com.calculator.client;
 
 import com.calculator.common.util.ConnectionConstants;
+import com.calculator.common.util.LogUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -11,10 +14,9 @@ import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Scanner;
 
-import static com.calculator.common.util.LogUtils.log;
-
 
 public class Client implements Runnable {
+    private static final Logger log = LogManager.getLogger(Client.class);
 
     private final String host;
     private final int port;
@@ -36,7 +38,8 @@ public class Client implements Runnable {
     }
 
     private void init() {
-        log("initializing client");
+        log.info("Client initialization...");
+        log.info(LogUtils.getLogo());
         if (selector != null) return;
         if (channel != null) return;
 
@@ -48,7 +51,7 @@ public class Client implements Runnable {
             channel.register(selector, SelectionKey.OP_CONNECT);
             channel.connect(new InetSocketAddress(host, port));
             scanner = new Scanner(System.in);
-
+            log.info("Client initialized");
         } catch (IOException e) {
             throw new RuntimeException("Cannot initialize client...", e);
         }
@@ -69,12 +72,12 @@ public class Client implements Runnable {
                     if (!key.isValid()) continue;
 
                     if (key.isConnectable()) {
-                        log("Connecting to the server");
+                        log.info("Connecting to the server [{}]", getRemoteHost());
                         connect(key);
-                        log("Connected");
+                        log.info("Connected");
                     }
                     if (key.isWritable()) {
-                        log("writing...");
+                        log.debug("Writing...");
                         write(key);
                     }
                     if (key.isReadable()) {
@@ -89,15 +92,6 @@ public class Client implements Runnable {
         }
     }
 
-    private void close() {
-        try {
-            selector.close();
-            scanner.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     private void read(SelectionKey key) throws IOException {
         SocketChannel channel = (SocketChannel) key.channel();
         ByteBuffer readBuffer = ByteBuffer.allocate(1000);
@@ -106,12 +100,12 @@ public class Client implements Runnable {
         try {
             length = channel.read(readBuffer);
         } catch (IOException e) {
-            log("Reading problem, closing connection");
+            log.info("Reading problem, closing connection");
             close();
             return;
         }
         if (length == -1) {
-            log("Connection closed by server");
+            log.info("Connection closed by server [{}]", getRemoteHost());
             close();
             System.exit(0);
         }
@@ -119,7 +113,7 @@ public class Client implements Runnable {
         byte[] buff = new byte[1024];
         readBuffer.get(buff, 0, length);
         String answer = new String(buff).trim();
-        log("Server said: " + answer);
+        log.info("Received: [{}]", answer);
         if (ConnectionConstants.CLOSED.equals(answer)) {
             key.interestOps(SelectionKey.OP_READ);
         } else {
@@ -132,9 +126,10 @@ public class Client implements Runnable {
         String line = scanner.nextLine();
         if ("".equals(line)) {
             key.interestOps(SelectionKey.OP_WRITE);
+            log.warn("Skip empty line");
         } else {
             channel.write(ByteBuffer.wrap(line.getBytes()));
-            log("send: " + line);
+            log.info("Send: [{}]", line);
             key.interestOps(SelectionKey.OP_READ);
         }
     }
@@ -147,4 +142,18 @@ public class Client implements Runnable {
         channel.configureBlocking(false);
         channel.register(selector, SelectionKey.OP_WRITE);
     }
+
+    private void close() {
+        try {
+            selector.close();
+            scanner.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private String getRemoteHost() {
+        return host + ":" + port;
+    }
+
 }

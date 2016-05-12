@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration strict="true">
+    <Properties>
+        <property name="logging.dir">./log</property>
+        <property name="filename.pattern">calculator-client</property>
+        <property name="file.pattern">%d{yyyy-MM-dd HH:mm:ss.sss} - %level | [%t] | %c{1.} - %m %ex%n</property>
+        <property name="console.pattern">%d{yyyy-MM-dd HH:mm:ss.sss} - %level | [%t] | %c - %m %ex%n</property>
+    </Properties>
+
+    <Appenders>
+        <Appender name="STDOUT" type="Console">
+            <Layout type="PatternLayout">
+                <pattern>${console.pattern}</pattern>
+            </Layout>
+        </Appender>
+        <RollingFile name="RollingFile"
+                     fileName="${logging.dir}/${filename.pattern}.log"
+                     filePattern="${logging.dir}/backup/${filename.pattern}/$${date:yyyy-MM}/${filename.pattern}-%d{ddMMyyyy}-%i.log.gz"
+                     ignoreExceptions="false">
+            <PatternLayout>
+                <Pattern>${file.pattern}</Pattern>
+            </PatternLayout>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+                <SizeBasedTriggeringPolicy size="25 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="20"/>
+        </RollingFile>
+    </Appenders>
+
+    <Loggers>
+        <Logger level="info" additivity="true" name="com.calculator.client">
+            <AppenderRef ref="RollingFile"/>
+        </Logger>
+
+        <Root level="error">
+            <AppenderRef ref="STDOUT"/>
+            <AppenderRef ref="RollingFile" level="error"/>
+        </Root>
+    </Loggers>
+</Configuration>
